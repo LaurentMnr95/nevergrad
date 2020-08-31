@@ -55,7 +55,8 @@ def mltuning(seed: tp.Optional[int] = None, overfitter: bool = False, seq: bool 
     for dimension in [None, 1, 2, 3]:
         for regressor in ["mlp", "decision_tree", "decision_tree_depth"]:
             for dataset in (
-            ["boston", "diabetes"] if dimension is None else ["artificialcos", "artificial", "artificialsquare"]):
+                    ["boston", "diabetes"] if dimension is None else ["artificialcos", "artificial",
+                                                                      "artificialsquare"]):
                 function = MLTuning(regressor=regressor, data_dimension=dimension, dataset=dataset,
                                     overfitter=overfitter)
                 for budget in [50, 150, 500]:
@@ -929,7 +930,7 @@ def control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
              control.Humanoid(num_rollouts=5, random_state=seed)
              ]
     optims = ["RandomSearch", "Shiwa", "CMA", "PSO", "OnePlusOne", "NGOpt", "DE",
-              "Zero", "Powell", "Cobyla", "LaMCTS", "MetaTuneRecentering"]
+              "Zero", "Powell", "Cobyla", "Lamcts", "MetaTuneRecentering"]
 
     for budget in [500, 1000, 3000, 5000]:
         for num_workers in [1]:
