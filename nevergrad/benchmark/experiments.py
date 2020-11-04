@@ -217,11 +217,11 @@ def instrum_discrete(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
                     instrum: ng.p.Parameter = ng.p.Choice(range(arity), repetitions=nv)
                     # Equivalent to, but much faster than, the following:
                     # instrum = ng.p.Tuple(*(ng.p.Choice(range(arity)) for _ in range(nv)))
-#                 else:
-#                     assert instrum_str == "Threshold"
-#                     # instrum = ng.p.Tuple(*(ng.p.TransitionChoice(range(arity)) for _ in range(nv)))
-#                     init = np.random.RandomState(seed=next(seedg)).uniform(-0.5, arity -0.5, size=nv)
-#                     instrum = ng.p.Array(init=init).set_bounds(-0.5, arity -0.5)  # type: ignore
+                #                 else:
+                #                     assert instrum_str == "Threshold"
+                #                     # instrum = ng.p.Tuple(*(ng.p.TransitionChoice(range(arity)) for _ in range(nv)))
+                #                     init = np.random.RandomState(seed=next(seedg)).uniform(-0.5, arity -0.5, size=nv)
+                #                     instrum = ng.p.Array(init=init).set_bounds(-0.5, arity -0.5)  # type: ignore
                 else:
                     assert instrum_str == "Unordered"
                     instrum = ng.p.TransitionChoice(range(arity), repetitions=nv)
@@ -918,6 +918,7 @@ def rocket(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
                         if not xp.is_incoherent:
                             yield xp
 
+
 @registry.register
 def mixsimulator(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
     """MixSimulator of power plants
@@ -925,10 +926,10 @@ def mixsimulator(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
     Sequential or 30 workers."""
     funcs = [OptimizeMix()]
     seedg = create_seed_generator(seed)
-    optims = ["OnePlusOne","NGOpt","CMA","DE","PSO"]
+    optims = ["OnePlusOne", "NGOpt", "CMA", "DE", "PSO"]
     if default_optims is not None:
         optims = default_optims
-    seq = np.arange(0,1601,20)
+    seq = np.arange(0, 1601, 20)
     for budget in seq:
         for num_workers in [1, 30]:
             if num_workers < budget:
@@ -937,6 +938,7 @@ def mixsimulator(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
                         xp = Experiment(fu, algo, budget, num_workers=num_workers, seed=next(seedg))
                         if not xp.is_incoherent:
                             yield xp
+
 
 @registry.register
 def control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
@@ -974,6 +976,8 @@ def control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
                             yield xp
 
 
+
+
 @registry.register
 def neuro_control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
     """MuJoCo testbed. Learn neural policies."""
@@ -987,8 +991,19 @@ def neuro_control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experime
              control.NeuroHumanoid(num_rollouts=num_rollouts, random_state=seed)
              ]
 
-    optims = ["CMA", "NGOpt4", "DiagonalCMA", "NGOpt8", "MetaModel", "chainCMAPowell"]
+    funcs2=[]
+    for func in zip(sigmas, funcs):
+        f = func.copy()
+        param = f.parametrization.copy()  # type: ignore
+        param[0][0].set_mutation(sigma=np.sqrt(6/(f.policy_dim[0]+f.policy_dim[1]))).set_name(f"xavier")
+        param[0][1].set_mutation(sigma=np.sqrt(6/(f.policy_dim[1]+f.policy_dim[2]))).set_name(f"xavier")
 
+        f.parametrization = param
+        f.parametrization.freeze()
+        funcs2.append(f)
+
+    optims = ["CMA", "DE", "OnePlusOne", "NGOpt4", "DiagonalCMA", "NGOpt8", "MetaModel", "chainCMAPowell"]
+    #TODO: code xavier, lecun init, he init
     for budget in [50, 500, 5000, 10000, 20000, 35000, 50000, 100000, 200000]:
         for num_workers in [1]:
             if num_workers < budget:
@@ -996,9 +1011,9 @@ def neuro_control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experime
                     for fu in funcs:
                         xp = Experiment(fu, algo, budget, num_workers=num_workers, seed=next(seedg))
                         if not xp.is_incoherent:
-                            yield xp                           
-                            
-                            
+                            yield xp
+
+
 @registry.register
 def simpletsp(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
     """Simple TSP problems. Please note that the methods we use could be applied or complex variants, whereas
@@ -1329,8 +1344,11 @@ def pbo_suite(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
         for fid in range(1, 24):
             for iid in range(1, 5):
                 func = PBOFunction(fid, iid, dim)
-                for optim in ["DiscreteOnePlusOne", "Shiwa", "CMA", "PSO", "TwoPointsDE", "DE", "OnePlusOne", "AdaptiveDiscreteOnePlusOne",
-                              "CMandAS2", "PortfolioDiscreteOnePlusOne", "DoubleFastGADiscreteOnePlusOne", "MultiDiscrete", "cGA", dde]:
+                for optim in ["DiscreteOnePlusOne", "Shiwa", "CMA", "PSO", "TwoPointsDE", "DE", "OnePlusOne",
+                              "AdaptiveDiscreteOnePlusOne",
+                              "CMandAS2", "PortfolioDiscreteOnePlusOne", "DoubleFastGADiscreteOnePlusOne",
+                              "MultiDiscrete", "cGA", dde]:
                     for nw in [1, 10]:
                         for budget in [100, 1000, 10000]:
-                            yield Experiment(func, optim, num_workers=nw, budget=budget, seed=next(seedg))  # type: ignore
+                            yield Experiment(func, optim, num_workers=nw, budget=budget,
+                                             seed=next(seedg))  # type: ignore
