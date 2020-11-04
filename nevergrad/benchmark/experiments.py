@@ -976,8 +976,6 @@ def control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
                             yield xp
 
 
-
-
 @registry.register
 def neuro_control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experiment]:
     """MuJoCo testbed. Learn neural policies."""
@@ -991,19 +989,45 @@ def neuro_control_problem(seed: tp.Optional[int] = None) -> tp.Iterator[Experime
              control.NeuroHumanoid(num_rollouts=num_rollouts, random_state=seed)
              ]
 
-    funcs2=[]
-    for func in zip(sigmas, funcs):
+    funcs2 = []
+    for func in funcs:
         f = func.copy()
         param = f.parametrization.copy()  # type: ignore
-        param[0][0].set_mutation(sigma=np.sqrt(6/(f.policy_dim[0]+f.policy_dim[1]))).set_name(f"xavier")
-        param[0][1].set_mutation(sigma=np.sqrt(6/(f.policy_dim[1]+f.policy_dim[2]))).set_name(f"xavier")
-
+        param.set_name("no_norm")
         f.parametrization = param
         f.parametrization.freeze()
         funcs2.append(f)
 
+        f = func.copy()
+        param = f.parametrization.copy()  # type: ignore
+        param[0][0].set_mutation(sigma=np.sqrt(6 / (f.policy_dim[0] + f.policy_dim[1])))
+        param[0][1].set_mutation(sigma=np.sqrt(6 / (f.policy_dim[0] + f.policy_dim[1])))
+        param.set_name("xavier")
+        f.parametrization = param
+        f.parametrization.freeze()
+        funcs2.append(f)
+
+        f = func.copy()
+        param = f.parametrization.copy()  # type: ignore
+        param[0][0].set_mutation(sigma=np.sqrt(1 / (f.policy_dim[1])))
+        param[0][1].set_mutation(sigma=np.sqrt(1 / (f.policy_dim[1])))
+        param.set_name("he1")
+        f.parametrization = param
+        f.parametrization.freeze()
+        funcs2.append(f)
+
+        f = func.copy()
+        param = f.parametrization.copy()  # type: ignore
+        param[0][0].set_mutation(sigma=np.sqrt(2 / (f.policy_dim[1])))
+        param[0][1].set_mutation(sigma=np.sqrt(2 / (f.policy_dim[1])))
+        param.set_name("he2")
+        f.parametrization = param
+        f.parametrization.freeze()
+
+        funcs2.append(f)
+
     optims = ["CMA", "DE", "OnePlusOne", "NGOpt4", "DiagonalCMA", "NGOpt8", "MetaModel", "chainCMAPowell"]
-    #TODO: code xavier, lecun init, he init
+    # TODO: code xavier, lecun init, he init
     for budget in [50, 500, 5000, 10000, 20000, 35000, 50000, 100000, 200000]:
         for num_workers in [1]:
             if num_workers < budget:

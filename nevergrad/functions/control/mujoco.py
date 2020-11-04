@@ -42,12 +42,12 @@ class GenericMujocoEnv:
             totalr = 0.
             while not done:
                 action = np.dot(x, (obs - self.mean) / self.std)
-                if y is not None:
-                    action = 0.1 * action
-                    if "Ant" in str(self.env):
-                        action = 0.1 * action
-                    if "Humanoid" in str(self.env):
-                        action = 0.01 * action
+                # if y is not None:
+                #     action = 0.1 * action
+                #     if "Ant" in str(self.env):
+                #         action = 0.1 * action
+                #     if "Humanoid" in str(self.env):
+                #         action = 0.01 * action
                 if y is not None:
                     action = np.dot(y, np.tanh(action))
                 obs, r, done, _ = self.env.step(action)
