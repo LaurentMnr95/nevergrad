@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 from multiprocessing import Pool
+import nevergrad as ng
 
 
 class GenericMujocoEnv:
@@ -20,19 +21,20 @@ class GenericMujocoEnv:
         random state for reproducibility in Gym environment.
     """
 
-    def __init__(self, env_name, num_rollouts,
-                 random_state):
+    def __init__(self, env_name, num_rollouts, random_state):
         # self.mean = np.array(state_mean)
         # self.std = np.array(state_std)
         self.env = gym.make(env_name)
         self.num_rollouts = num_rollouts
         self.env.seed(random_state)
+        self.global_stats = Stats()
 
-    def __call__(self, x, global_stats):
+    def __call__(self, x):
         """Compute average cummulative reward of a given policy.
         """
-        state_mean = global_stats.mean
-        state_std = global_stats.mean
+        x = x.value
+        state_mean = self.global_stats.mean
+        state_std = self.global_stats.std
 
         stats_run = Stats()
         returns = []
@@ -41,12 +43,9 @@ class GenericMujocoEnv:
             done = False
             totalr = 0.
             while not done:
-                action = np.dot(x, (obs - state_mean) / state_std)
+                action = np.dot(x, (obs - state_mean) / (state_std + 1e-8))
                 obs, r, done, _ = self.env.step(action)
-                stats_run.n += 1
-                stats_run.sum_obs += obs
-                stats_run.sum_obs2 += obs ** 2
-
+                stats_run.push(obs)
                 totalr += r
             returns.append(totalr)
 
@@ -64,6 +63,11 @@ class Stats:
         self.sum_obs += stats_run.sum_obs
         self.sum_obs2 += stats_run.sum_obs2
 
+    def push(self, obs):
+        self.n += 1
+        self.sum_obs += obs
+        self.sum_obs2 += obs ** 2
+
     @property
     def mean(self):
         if self.n == 0:
@@ -74,33 +78,40 @@ class Stats:
     def std(self):
         if self.n == 0:
             return 1
-        return self.sum_obs2 / self.n - (self.sum_obs / self.n) ** 2
+        a = self.sum_obs2 / self.n - (self.sum_obs / self.n) ** 2
+        a = np.sqrt(a)
+        a[a < 1e-7] = float("inf")
+        return a
 
 
-num_workers = 5
-budget = ...
-optimizer = ...
-env_name = ...
-num_rollouts = ...
-random_state = ...
-global_stats = Stats()
+env_name = 'Ant-v2'
+policy_dim = (8, 111)
+
+num_workers = 1
+budget = 10000
+param = ng.p.Parameterng.p.Array(shape=(8, 111)).set_mutation(sigma=0.001)
+optimizer = ng.optimizers.DiagonalCMA(parametrization=param, budget=budget)
+num_rollouts = 1
+random_state = 1
 
 elapsed_budget = 0
-while True:
+
+env = GenericMujocoEnv(env_name, num_rollouts, random_state)
+while elapsed_budget <= budget:
     x = []
     for _ in range(num_workers):
-        x.append((optimizer.ask(), global_stats))
-
-    env = GenericMujocoEnv(env_name, num_rollouts, random_state)
+        x.append(optimizer.ask())
 
     with Pool(num_workers) as p:
         y = p.map(env, x)
 
     for _, stats_run in y:
-        global_stats.update(stats_run)
+        env.global_stats.update(stats_run)
 
     for u, v in zip(x, y):
+        print(v[0])
         optimizer.tell(u, v[0])
         elapsed_budget += 1
         if elapsed_budget > budget:
+            print("ok")
             break
