@@ -21,12 +21,13 @@ class GenericMujocoEnv:
         random state for reproducibility in Gym environment.
     """
 
-    def __init__(self, env_name, num_rollouts, random_state):
+    def __init__(self, env_name, num_rollouts, random_state=None):
         # self.mean = np.array(state_mean)
         # self.std = np.array(state_std)
         self.env = gym.make(env_name)
         self.num_rollouts = num_rollouts
-        self.env.seed(random_state)
+        if random_state is not None:
+            self.env.seed(random_state)
         self.global_stats = Stats()
 
     def __call__(self, x):
@@ -84,34 +85,54 @@ class Stats:
         return a
 
 
-env_name = 'Ant-v2'
-policy_dim = (8, 111)
+class MujocoExperiment:
+    def __init__(self, num_workers, budget, optimizer, rescaling, policy_dim, env_name, num_rollouts,
+                 random_state=None):
+        self.num_workers = num_workers
+        self.budget = budget
+        self.num_rollouts = num_rollouts
+        self.random_state = random_state
+        self.optimizer = optimizer
+        self.policy_dim = policy_dim
+        self.env_name = env_name
+        self.rescaling = rescaling
 
-num_workers = 1
-budget = 10000
-param = ng.p.Parameterng.p.Array(shape=(8, 111)).set_mutation(sigma=0.001)
-optimizer = ng.optimizers.DiagonalCMA(parametrization=param, budget=budget)
-num_rollouts = 1
-random_state = 1
+    def __call__(self):
+        param = ng.p.Array(shape=self.policy_dim).set_mutation(sigma=self.rescaling)
+        optimizer = ng.optimizers.registry[self.optimizer](parametrization=param, budget=self.budget)
+        elapsed_budget = 0
 
-elapsed_budget = 0
+        env = GenericMujocoEnv(self.env_name, self.num_rollouts, self.random_state)
+        while elapsed_budget <= self.budget:
+            x = []
+            for _ in range(self.num_workers):
+                x.append(optimizer.ask())
 
-env = GenericMujocoEnv(env_name, num_rollouts, random_state)
-while elapsed_budget <= budget:
-    x = []
-    for _ in range(num_workers):
-        x.append(optimizer.ask())
+            with Pool(self.num_workers) as p:
+                y = p.map(env, x)
 
-    with Pool(num_workers) as p:
-        y = p.map(env, x)
+            for _, stats_run in y:
+                env.global_stats.update(stats_run)
 
-    for _, stats_run in y:
-        env.global_stats.update(stats_run)
+            for u, v in zip(x, y):
+                print(v[0])
+                optimizer.tell(u, v[0])
+                elapsed_budget += 1
+                if elapsed_budget >= self.budget:
+                    break
 
-    for u, v in zip(x, y):
-        print(v[0])
-        optimizer.tell(u, v[0])
-        elapsed_budget += 1
-        if elapsed_budget > budget:
-            print("ok")
-            break
+        with open('mujoco.txt', 'a') as f:
+            f.write(f"{self.num_workers},{self.budget},{self.num_rollouts},{self.random_state},"
+                    f"{self.optimizer},{self.policy_dim},{self.env_name},{self.rescaling}")
+
+
+if __name__ == "__main__":
+    num_workers = 1
+    budget = 1
+    optimizer = "DiagonalCMA"
+    rescaling = 0.001
+    policy_dim = (8, 111)
+    env_name = "Ant-v2"
+    num_rollouts = 1
+    exp = MujocoExperiment(num_workers, budget, optimizer, rescaling, policy_dim, env_name, num_rollouts)
+    exp()
