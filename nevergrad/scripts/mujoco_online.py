@@ -140,6 +140,8 @@ class MujocoExperiment:
                 optimizer.tell(u, v[0])
 
         recommendation = optimizer.provide_recommendation()
+        env = GenericMujocoEnv(self.env_name, self.num_rollouts,
+                               self.random_state, self.online, global_stats)
         score = env(recommendation.value)
         print(f"Final score = {score[0]}")
 
@@ -152,10 +154,10 @@ if __name__ == "__main__":
     num_workers = 50
     budget = 10000
     optimizer = "DiagonalCMA"
-    # rescaling = 0.001
-    # env_name = "Humanoid-v2"
-    rescaling = 0.01
-    env_name = "Ant-v2"
+    rescaling = 0.001
+    env_name = "Humanoid-v2"
+    # rescaling = 0.01
+    # env_name = "Ant-v2"
     num_rollouts = 1
     exp = MujocoExperiment(num_workers, budget, optimizer, rescaling, env_name, num_rollouts, online=True)
     exp()
