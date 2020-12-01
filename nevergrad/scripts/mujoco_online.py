@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, Queue, Process
 import nevergrad as ng
 from mujoco_params import *
 
@@ -24,12 +24,12 @@ class GenericMujocoEnv:
         random state for reproducibility in Gym environment.
     """
 
-    def __init__(self, env_name, num_rollouts, random_state=None, online=False):
+    def __init__(self, env_name, num_rollouts, random_state=None, online=False, stats=None):
         self.env = gym.make(env_name)
         self.num_rollouts = num_rollouts
         if random_state is not None:
             self.env.seed(random_state)
-        self.global_stats = Stats()
+        self.global_stats = stats
         self.online = online
         self.params = correspondence[env_name]()
 
@@ -111,19 +111,25 @@ class MujocoExperiment:
         param = ng.p.Array(shape=self.policy_dim).set_mutation(sigma=self.rescaling)
         optimizer = ng.optimizers.registry[self.optimizer](parametrization=param, budget=self.budget,
                                                            num_workers=self.num_workers)
+        global_stats = Stats()
         elapsed_budget = 0
-        env = GenericMujocoEnv(self.env_name, self.num_rollouts, self.random_state, self.online)
         while elapsed_budget <= self.budget:
             x = []
+            jobs = []
+            pool = Pool(num_workers)
             for _ in range(self.num_workers):
-                x.append(optimizer.ask())
-
-            with Pool(self.num_workers) as p:
-                y = p.map(env, [v.value for v in x])
+                x_asked = optimizer.ask()
+                x.append(x_asked)
+                env = GenericMujocoEnv(self.env_name, self.num_rollouts,
+                                       self.random_state, self.online, global_stats)
+                jobs.append(pool.apply_async(env, args=(x_asked.value,)))
+            pool.close()
+            pool.join()
+            y = [p.get() for p in jobs]
 
             if self.online:
                 for _, stats_run in y:
-                    env.global_stats.update(stats_run)
+                    global_stats.update(stats_run)
 
             for u, v in zip(x, y):
                 elapsed_budget += 1
@@ -143,11 +149,10 @@ class MujocoExperiment:
 
 
 if __name__ == "__main__":
-    num_workers = 20
-    budget = 1000
+    num_workers = 50
+    budget = 10000
     optimizer = "DiagonalCMA"
     # rescaling = 0.001
-    # policy_dim = (17, 376)
     # env_name = "Humanoid-v2"
     rescaling = 0.01
     env_name = "Ant-v2"
