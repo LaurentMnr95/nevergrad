@@ -2,6 +2,9 @@ import gym
 import numpy as np
 from multiprocessing import Pool
 import nevergrad as ng
+from mujoco_params import *
+
+correspondence = {"Ant-v2": Ant, "Humanois-v2": Humanoid}
 
 
 class GenericMujocoEnv:
@@ -21,20 +24,26 @@ class GenericMujocoEnv:
         random state for reproducibility in Gym environment.
     """
 
-    def __init__(self, env_name, num_rollouts, random_state=None):
-        # self.mean = np.array(state_mean)
-        # self.std = np.array(state_std)
+    def __init__(self, env_name, num_rollouts, random_state=None, online=False):
         self.env = gym.make(env_name)
         self.num_rollouts = num_rollouts
         if random_state is not None:
             self.env.seed(random_state)
         self.global_stats = Stats()
+        self.online = online
+        self.params = correspondence[env_name]()
 
     def __call__(self, x):
         """Compute average cummulative reward of a given policy.
         """
-        state_mean = self.global_stats.mean
-        state_std = self.global_stats.std
+        self.env = gym.make(env_name)
+
+        if self.online:
+            state_mean = self.global_stats.mean
+            state_std = self.global_stats.std
+        else:
+            state_mean = np.array(self.params.state_mean)
+            state_std = np.array(self.params.state_std)
 
         stats_run = Stats()
         returns = []
@@ -85,45 +94,43 @@ class Stats:
 
 
 class MujocoExperiment:
-    def __init__(self, num_workers, budget, optimizer, rescaling, policy_dim, env_name, num_rollouts,
-                 random_state=None):
+    def __init__(self, num_workers, budget, optimizer, rescaling, env_name, num_rollouts,
+                 random_state=None, online=True):
         self.num_workers = num_workers
         self.budget = budget
         self.num_rollouts = num_rollouts
         self.random_state = random_state
         self.optimizer = optimizer
-        self.policy_dim = policy_dim
         self.env_name = env_name
+        self.params = correspondence[self.env_name]()
+        self.policy_dim = self.params.policy_dim
         self.rescaling = rescaling
+        self.online = online
 
     def __call__(self):
         param = ng.p.Array(shape=self.policy_dim).set_mutation(sigma=self.rescaling)
         optimizer = ng.optimizers.registry[self.optimizer](parametrization=param, budget=self.budget,
-                                                           num_workers=self.num_workers*2)
+                                                           num_workers=self.num_workers)
         elapsed_budget = 0
-        env = GenericMujocoEnv(self.env_name, self.num_rollouts, self.random_state)
+        env = GenericMujocoEnv(self.env_name, self.num_rollouts, self.random_state, self.online)
         while elapsed_budget <= self.budget:
             x = []
             for _ in range(self.num_workers):
                 x.append(optimizer.ask())
 
-            x_values = [v.value for v in x]
-
             with Pool(self.num_workers) as p:
-                y = p.map(env, x_values)
+                y = p.map(env, [v.value for v in x])
 
-            for _, stats_run in y:
-                env.global_stats.update(stats_run)
+            if self.online:
+                for _, stats_run in y:
+                    env.global_stats.update(stats_run)
 
             for u, v in zip(x, y):
                 elapsed_budget += 1
                 if elapsed_budget > self.budget:
                     break
-                if v[0] < 0:
-                    print(f"[{elapsed_budget}/{budget}]: score = {v[0]}")
-                else:
-                    print(u.value)
-                    print(f"[{elapsed_budget}/{budget}]: score = {v[0]}")
+
+                print(f"[{elapsed_budget}/{budget}]: score = {v[0]}")
                 optimizer.tell(u, v[0])
 
         recommendation = optimizer.provide_recommendation()
@@ -137,18 +144,16 @@ class MujocoExperiment:
 
 if __name__ == "__main__":
     num_workers = 20
-    budget = 10000
+    budget = 1000
     optimizer = "DiagonalCMA"
-    # rescaling = 0.0001
+    # rescaling = 0.001
     # policy_dim = (17, 376)
     # env_name = "Humanoid-v2"
-    rescaling = 0.001
-    policy_dim = (8, 111)
+    rescaling = 0.01
     env_name = "Ant-v2"
     num_rollouts = 1
-    exp = MujocoExperiment(num_workers, budget, optimizer, rescaling, policy_dim, env_name, num_rollouts)
+    exp = MujocoExperiment(num_workers, budget, optimizer, rescaling, env_name, num_rollouts, online=True)
     exp()
-
 
 # import gym
 # import numpy as np
