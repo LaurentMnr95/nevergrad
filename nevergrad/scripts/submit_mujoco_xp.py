@@ -11,9 +11,9 @@ optimizers = ["DiagonalCMA", "NGOpt8"]
 
 executor = submitit.AutoExecutor(folder=f"logs")
 executor.update_parameters(
-    gpus_per_node=0,
+    gpus_per_node=1,
     tasks_per_node=1,  # one task per GPU
-    cpus_per_task=1,
+    cpus_per_task=10,
     nodes=1,
     # Below are cluster dependent parameters
     slurm_partition="dev",
